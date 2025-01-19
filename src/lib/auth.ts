@@ -12,21 +12,24 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        try {
-          if (!credentials?.email || !credentials?.password) {
-            return null
-          }
+        if (!credentials?.email || !credentials?.password) {
+          return null
+        }
 
+        try {
           const user = await prisma.user.findUnique({
             where: { email: credentials.email }
           })
 
           if (!user || !user.password) {
+            console.log("User not found or no password")
             return null
           }
 
-          const isValid = await bcrypt.compare(credentials.password, user.password)
-          if (!isValid) {
+          const passwordMatch = await bcrypt.compare(credentials.password, user.password)
+          
+          if (!passwordMatch) {
+            console.log("Password doesn't match")
             return null
           }
 
@@ -45,5 +48,22 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/signin"
   },
-  session: { strategy: "jwt" }
+  session: { 
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60 // 30 days
+  },
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id
+      }
+      return token
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.id as string
+      }
+      return session
+    }
+  }
 } 

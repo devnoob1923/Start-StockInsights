@@ -32,8 +32,10 @@ model Portfolio {
 model Stock {
   id        String   @id @default(cuid())
   symbol    String
-  shares    Int
-  costBasis Float
+  name      String
+  type      String?
+  region    String?
+  currency  String?
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())

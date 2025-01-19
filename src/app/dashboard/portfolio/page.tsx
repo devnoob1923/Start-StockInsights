@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { searchStock, getStockNews, type StockInfo } from '@/lib/alpha-vantage'
 
 interface Stock {
   id: string
@@ -51,6 +52,8 @@ export default function PortfolioDashboard() {
   const [newsLoading, setNewsLoading] = useState(false)
   const [symbolError, setSymbolError] = useState("")
   const [mounted, setMounted] = useState(false)
+  const [searchResults, setSearchResults] = useState<StockInfo[]>([])
+  const [selectedStock, setSelectedStock] = useState<StockInfo | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -119,57 +122,51 @@ export default function PortfolioDashboard() {
     }
   }
 
-  const handleAddStock = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setAddingStock(true)
-    setSymbolError("")
+  const handleSearch = async (query: string) => {
+    if (query.length < 2) return;
+    const results = await searchStock(query);
+    setSearchResults(results);
+  };
 
+  const handleAddStock = async (stock: StockInfo) => {
+    setAddingStock(true);
+    
     try {
-      // Validate symbol first
-      const isValid = await validateSymbol(newStock.symbol)
-      if (!isValid) {
-        setSymbolError("Invalid stock symbol")
-        toast({
-          title: "Error",
-          description: "Invalid stock symbol. Please try again.",
-          variant: "destructive"
-        })
-        return
-      }
-
       const response = await fetch("/api/stocks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          symbol: newStock.symbol.toUpperCase(),
-          shares: parseFloat(newStock.shares),
-          costBasis: parseFloat(newStock.costBasis)
+          symbol: stock.symbol,
+          name: stock.name,
+          type: stock.type,
+          region: stock.region,
+          currency: stock.currency
         })
-      })
+      });
 
       if (!response.ok) {
-        throw new Error("Failed to add stock")
+        throw new Error("Failed to add stock");
       }
 
-      const stock = await response.json()
-      setStocks([...stocks, stock])
-      setNewStock({ symbol: '', shares: '', costBasis: '' })
+      const newStock = await response.json();
+      setStocks([...stocks, newStock]);
       toast({
         title: "Success",
-        description: "Stock has been added to your portfolio."
-      })
-      loadPortfolioAndNews()
+        description: `${stock.name} (${stock.symbol}) has been added to your portfolio.`
+      });
+      loadPortfolioAndNews();
     } catch (error) {
-      console.error("Error adding stock:", error)
+      console.error("Error adding stock:", error);
       toast({
         title: "Error",
         description: "Failed to add stock. Please try again.",
         variant: "destructive"
-      })
+      });
     } finally {
-      setAddingStock(false)
+      setAddingStock(false);
+      setSearchResults([]);
     }
-  }
+  };
 
   const handleDeleteStock = async (stockId: string) => {
     try {
@@ -217,45 +214,32 @@ export default function PortfolioDashboard() {
                 <DialogHeader>
                   <DialogTitle>Add Stock to Portfolio</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleAddStock} className="space-y-4">
+                <div className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium">Stock Symbol</label>
+                    <label className="text-sm font-medium">Search Stock</label>
                     <Input
-                      placeholder="Enter stock symbol (e.g., AAPL)"
-                      value={newStock.symbol}
-                      onChange={(e) => setNewStock({ 
-                        ...newStock, 
-                        symbol: e.target.value.toUpperCase() 
-                      })}
+                      placeholder="Search by symbol or name"
+                      onChange={(e) => handleSearch(e.target.value)}
                       className="mt-2"
                     />
+                    {searchResults.length > 0 && (
+                      <div className="mt-2 border rounded-md max-h-60 overflow-y-auto">
+                        {searchResults.map((stock) => (
+                          <div
+                            key={stock.symbol}
+                            className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-0"
+                            onClick={() => handleAddStock(stock)}
+                          >
+                            <div className="font-medium">{stock.name}</div>
+                            <div className="text-sm text-gray-500">
+                              {stock.symbol} • {stock.region} • {stock.currency}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <label className="text-sm font-medium">Shares</label>
-                    <Input
-                      required
-                      type="number"
-                      step="any"
-                      value={newStock.shares}
-                      onChange={(e) => setNewStock({ ...newStock, shares: e.target.value })}
-                      placeholder="Number of shares"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Cost Basis</label>
-                    <Input
-                      required
-                      type="number"
-                      step="any"
-                      value={newStock.costBasis}
-                      onChange={(e) => setNewStock({ ...newStock, costBasis: e.target.value })}
-                      placeholder="Cost per share"
-                    />
-                  </div>
-                  <Button type="submit" disabled={addingStock}>
-                    {addingStock ? "Adding..." : "Add Stock"}
-                  </Button>
-                </form>
+                </div>
               </DialogContent>
             </Dialog>
           </div>
