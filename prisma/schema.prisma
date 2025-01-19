@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  password      String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  portfolio     Portfolio?
+  stocks        Stock[]
+  preferences   UserPreferences?
+  notifications Notification[]
+  feedback      Feedback[]
+}
+
+model Portfolio {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id])
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Stock {
+  id        String   @id @default(cuid())
+  symbol    String
+  shares    Int
+  costBasis Float
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model UserPreferences {
+  id              String     @id @default(cuid())
+  userId          String     @unique
+  user            User       @relation(fields: [userId], references: [id])
+  newsFrequency   Frequency  @default(DAILY)
+  deliveryChannel Channel[]  @default([EMAIL])
+  topics          Topic[]    @default([])
+  priceAlerts     Boolean    @default(false)
+  alertThreshold  Float?     // Percentage change to trigger alert
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+enum Frequency {
+  REALTIME
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum Channel {
+  EMAIL
+  WHATSAPP
+  SMS
+  PUSH
+}
+
+enum Topic {
+  EARNINGS
+  DIVIDENDS
+  MERGERS_ACQUISITIONS
+  MARKET_ANALYSIS
+  INDUSTRY_NEWS
+  TECHNICAL_ANALYSIS
+  INSIDER_TRADING
+  SEC_FILINGS
+  PRICE_MOVEMENTS
+  ANALYST_RATINGS
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  type      String
+  message   String
+  status    String
+  createdAt DateTime  @default(now())
+}
+
+model Feedback {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  rating    Int
+  comment   String?
+  createdAt DateTime  @default(now())
+}
+ 
