@@ -8,7 +8,6 @@ import { Plus, X, RefreshCw, Trash2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Card } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { NewsItem, fetchNewsForStocks } from "@/lib/news"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -28,20 +27,19 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { searchStock, getStockNews, type StockInfo } from '@/lib/alpha-vantage'
+import { searchStock, getStockNews, type StockInfo, type NewsItem } from '@/lib/alpha-vantage'
 
-interface Stock {
-  id: string
-  symbol: string
-  name?: string
-  shares: number
-  costBasis: number
-  source: 'manual' | 'integrated'
+interface PortfolioStock {
+  symbol: string;
+  name: string;
+  type: string;
+  region: string;
+  currency: string;
 }
 
-export default function PortfolioDashboard() {
+export default function PortfolioPage() {
   const { toast } = useToast()
-  const [stocks, setStocks] = useState<Stock[]>([])
+  const [stocks, setStocks] = useState<PortfolioStock[]>([])
   const [news, setNews] = useState<NewsItem[]>([])
   const [loading, setLoading] = useState(true)
   const [totalValue, setTotalValue] = useState(0)
@@ -52,8 +50,11 @@ export default function PortfolioDashboard() {
   const [newsLoading, setNewsLoading] = useState(false)
   const [symbolError, setSymbolError] = useState("")
   const [mounted, setMounted] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StockInfo[]>([])
-  const [selectedStock, setSelectedStock] = useState<StockInfo | null>(null)
+  const [selectedStockFilter, setSelectedStockFilter] = useState<string>('all')
+  const [allNews, setAllNews] = useState<NewsItem[]>([])
+  const [selectedRegionFilter, setSelectedRegionFilter] = useState<string>('all')
 
   useEffect(() => {
     setMounted(true)
@@ -73,12 +74,18 @@ export default function PortfolioDashboard() {
       if (response.ok) {
         const data = await response.json()
         setStocks(data.stocks)
-        setTotalValue(data.totalValue)
         
-        // Fetch news for portfolio stocks
-        const symbols = data.stocks.map((stock: Stock) => stock.symbol)
-        const newsData = await fetchNewsForStocks(symbols)
-        setNews(newsData)
+        // Fetch news for all stocks
+        if (data.stocks.length > 0) {
+          const newsPromises = data.stocks.map((stock: PortfolioStock) => getStockNews(stock.symbol));
+          const newsResults = await Promise.all(newsPromises);
+          const combinedNews = newsResults.flat().sort((a, b) => {
+            const stockCompare = a.ticker_sentiment?.[0]?.ticker.localeCompare(b.ticker_sentiment?.[0]?.ticker || '') || 0;
+            return stockCompare || new Date(b.time_published).getTime() - new Date(a.time_published).getTime();
+          });
+          setAllNews(combinedNews);
+          setNews(combinedNews);
+        }
       }
     } catch (error) {
       toast({
@@ -91,26 +98,54 @@ export default function PortfolioDashboard() {
     }
   }
 
-  const validateSymbol = async (symbol: string) => {
-    try {
-      const response = await fetch(`/api/stocks/validate?symbol=${symbol}`)
-      const data = await response.json()
-      return data.valid
-    } catch (error) {
-      return false
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query)
+    if (query.length >= 2) {
+      const results = await searchStock(query)
+      setSearchResults(results)
+    } else {
+      setSearchResults([])
     }
+  }
+
+  const addStock = (stock: StockInfo) => {
+    setStocks(prevStocks => {
+      if (prevStocks.some(s => s.symbol === stock.symbol)) {
+        return prevStocks
+      }
+      return [...prevStocks, {
+        symbol: stock.symbol,
+        name: stock.name,
+        type: stock.type,
+        region: stock.region,
+        currency: stock.currency
+      }]
+    })
+    setSearchQuery('')
+    setSearchResults([])
+  }
+
+  const removeStock = (symbol: string) => {
+    setStocks(prevStocks => prevStocks.filter(stock => stock.symbol !== symbol))
   }
 
   const refreshNews = async () => {
     setNewsLoading(true)
     try {
-      const symbols = stocks.map(stock => stock.symbol)
-      const newsData = await fetchNewsForStocks(symbols)
-      setNews(newsData)
-      toast({
-        title: "News Updated",
-        description: "Latest news has been loaded."
-      })
+      if (stocks.length > 0) {
+        const newsPromises = stocks.map((stock: PortfolioStock) => getStockNews(stock.symbol));
+        const newsResults = await Promise.all(newsPromises);
+        const combinedNews = newsResults.flat().sort((a, b) => {
+          const stockCompare = a.ticker_sentiment?.[0]?.ticker.localeCompare(b.ticker_sentiment?.[0]?.ticker || '') || 0;
+          return stockCompare || new Date(b.time_published).getTime() - new Date(a.time_published).getTime();
+        });
+        setAllNews(combinedNews);
+        filterNews(selectedStockFilter, combinedNews);
+        toast({
+          title: "News Updated",
+          description: "Latest news has been loaded."
+        })
+      }
     } catch (error) {
       toast({
         title: "Error",
@@ -122,72 +157,35 @@ export default function PortfolioDashboard() {
     }
   }
 
-  const handleSearch = async (query: string) => {
-    if (query.length < 2) return;
-    const results = await searchStock(query);
-    setSearchResults(results);
-  };
+  const filterNews = (symbol: string, newsData = allNews) => {
+    setSelectedStockFilter(symbol);
+    if (symbol === 'all') {
+      setNews(newsData);
+    } else {
+      setNews(newsData.filter(item => 
+        item.ticker_sentiment?.some(sentiment => sentiment.ticker === symbol)
+      ));
+    }
+  }
 
-  const handleAddStock = async (stock: StockInfo) => {
-    setAddingStock(true);
+  const filterStocksByRegion = (region: string) => {
+    setSelectedRegionFilter(region);
     
-    try {
-      const response = await fetch("/api/stocks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          symbol: stock.symbol,
-          name: stock.name,
-          type: stock.type,
-          region: stock.region,
-          currency: stock.currency
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to add stock");
-      }
-
-      const newStock = await response.json();
-      setStocks([...stocks, newStock]);
-      toast({
-        title: "Success",
-        description: `${stock.name} (${stock.symbol}) has been added to your portfolio.`
-      });
-      loadPortfolioAndNews();
-    } catch (error) {
-      console.error("Error adding stock:", error);
-      toast({
-        title: "Error",
-        description: "Failed to add stock. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setAddingStock(false);
-      setSearchResults([]);
-    }
-  };
-
-  const handleDeleteStock = async (stockId: string) => {
-    try {
-      const response = await fetch(`/api/stocks?id=${stockId}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) throw new Error('Failed to delete stock')
-
-      setStocks(stocks.filter(stock => stock.id !== stockId))
-      toast({
-        title: "Stock removed",
-        description: "Stock has been removed from your portfolio."
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to remove stock. Please try again.",
-        variant: "destructive"
-      })
-    }
+    // Filter news based on the selected region
+    const filteredStocks = stocks.filter(stock => 
+      region === 'all' || stock.region === region
+    );
+    const stockSymbols = filteredStocks.map(stock => stock.symbol);
+    
+    // Filter news to only show news for stocks in the selected region
+    const filteredNews = allNews.filter(item =>
+      item.ticker_sentiment?.some(sentiment => 
+        stockSymbols.includes(sentiment.ticker)
+      )
+    );
+    
+    setNews(filteredNews);
+    setSelectedStockFilter('all'); // Reset stock filter when region changes
   }
 
   if (!mounted) {
@@ -202,7 +200,7 @@ export default function PortfolioDashboard() {
         {/* Left Column - Portfolio */}
         <div>
           <div className="flex justify-between items-center mb-8">
-            <h1 className="text-2xl font-bold">Your Portfolio</h1>
+            <h1 className="text-2xl font-bold">My Portfolio</h1>
             <Dialog>
               <DialogTrigger asChild>
                 <Button>
@@ -219,6 +217,7 @@ export default function PortfolioDashboard() {
                     <label className="text-sm font-medium">Search Stock</label>
                     <Input
                       placeholder="Search by symbol or name"
+                      value={searchQuery}
                       onChange={(e) => handleSearch(e.target.value)}
                       className="mt-2"
                     />
@@ -228,7 +227,7 @@ export default function PortfolioDashboard() {
                           <div
                             key={stock.symbol}
                             className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-0"
-                            onClick={() => handleAddStock(stock)}
+                            onClick={() => addStock(stock)}
                           >
                             <div className="font-medium">{stock.name}</div>
                             <div className="text-sm text-gray-500">
@@ -245,11 +244,7 @@ export default function PortfolioDashboard() {
           </div>
 
           {/* Portfolio Summary Cards */}
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            <Card className="p-6">
-              <h3 className="text-sm font-medium text-gray-500">Total Value</h3>
-              <p className="text-2xl font-bold">${totalValue.toLocaleString()}</p>
-            </Card>
+          <div className="grid grid-cols-2 gap-4 mb-8">
             <Card className="p-6">
               <h3 className="text-sm font-medium text-gray-500">Number of Stocks</h3>
               <p className="text-2xl font-bold">{stocks.length}</p>
@@ -257,9 +252,28 @@ export default function PortfolioDashboard() {
             <Card className="p-6">
               <h3 className="text-sm font-medium text-gray-500">Portfolio Sources</h3>
               <p className="text-2xl font-bold">
-                {new Set(stocks.map(s => s.source)).size}
+                {new Set(stocks.map(s => s.symbol)).size}
               </p>
             </Card>
+          </div>
+
+          {/* Add this before the Stocks Table */}
+          <div className="flex gap-2 mb-4">
+            <Button
+              variant={selectedRegionFilter === 'all' ? "default" : "outline"}
+              onClick={() => filterStocksByRegion('all')}
+            >
+              All Regions
+            </Button>
+            {Array.from(new Set(stocks.map(s => s.region))).map(region => (
+              <Button
+                key={region}
+                variant={selectedRegionFilter === region ? "default" : "outline"}
+                onClick={() => filterStocksByRegion(region)}
+              >
+                {region}
+              </Button>
+            ))}
           </div>
 
           {/* Stocks Table */}
@@ -272,13 +286,13 @@ export default function PortfolioDashboard() {
                       Symbol
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Shares
+                      Name
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Cost Basis
+                      Type
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Current Value
+                      Currency
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Actions
@@ -286,52 +300,51 @@ export default function PortfolioDashboard() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {stocks.map((stock) => (
-                    <tr key={stock.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="font-medium">{stock.name || stock.symbol}</div>
-                          <div className="text-sm text-gray-500">{stock.symbol}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {stock.shares}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        ${stock.costBasis}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        ${(stock.shares * stock.costBasis).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Remove Stock</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to remove {stock.name || stock.symbol} from your portfolio?
-                                This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDeleteStock(stock.id)}
-                                className="bg-red-500 hover:bg-red-600"
-                              >
-                                Remove
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </td>
-                    </tr>
-                  ))}
+                  {stocks
+                    .filter(stock => selectedRegionFilter === 'all' || stock.region === selectedRegionFilter)
+                    .map((stock) => (
+                      <tr key={stock.symbol}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="font-medium">{stock.symbol}</div>
+                            <div className="text-sm text-gray-500">{stock.name}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {stock.type}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {stock.currency}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Remove Stock</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to remove {stock.name} from your portfolio?
+                                  This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => removeStock(stock.symbol)}
+                                  className="bg-red-500 hover:bg-red-600"
+                                >
+                                  Remove
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
@@ -343,15 +356,29 @@ export default function PortfolioDashboard() {
           <Card className="p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">Latest News</h2>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={refreshNews}
-                disabled={newsLoading}
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${newsLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
+              <div className="flex gap-2">
+                <select
+                  className="border rounded-md px-2 py-1"
+                  value={selectedStockFilter}
+                  onChange={(e) => filterNews(e.target.value)}
+                >
+                  <option value="all">All Stocks</option>
+                  {stocks.map((stock) => (
+                    <option key={stock.symbol} value={stock.symbol}>
+                      {stock.symbol}
+                    </option>
+                  ))}
+                </select>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={refreshNews}
+                  disabled={newsLoading}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${newsLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
             </div>
             <ScrollArea className="h-[800px]">
               {newsLoading ? (

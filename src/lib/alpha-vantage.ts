@@ -21,13 +21,24 @@ export interface NewsItem {
 }
 
 export async function searchStock(query: string): Promise<StockInfo[]> {
+  if (!query || !API_KEY) return [];
+
   try {
     const response = await fetch(
-      `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${query}&apikey=${API_KEY}`
+      `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${API_KEY}`
     );
+
+    if (!response.ok) {
+      console.error('Alpha Vantage API error:', response.status, response.statusText);
+      return [];
+    }
+
     const data = await response.json();
     
-    if (!data.bestMatches) return [];
+    if (!data.bestMatches || !Array.isArray(data.bestMatches)) {
+      console.warn('Unexpected API response format:', data);
+      return [];
+    }
     
     return data.bestMatches.map((match: any) => ({
       symbol: match['1. symbol'],

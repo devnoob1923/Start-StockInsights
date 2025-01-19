@@ -13,7 +13,7 @@
   export async function searchStocks(query: string): Promise<StockSearchResult[]> {
     if (!query) return []
 
-    const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${query}&apikey=7R6N2LMQPEFQ6785`
+    const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${query}&apikey=LJ8JTKEUL8TJDXKX`
 
     try {
       const response = await fetch(url, {
