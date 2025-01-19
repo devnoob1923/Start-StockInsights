@@ -1,4 +1,5 @@
-const API_KEY = process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY;
+const SEARCH_API_KEY = process.env.NEXT_PUBLIC_ALPHA_VANTAGE_SEARCH_API_KEY;
+const NEWS_API_KEY = process.env.NEXT_PUBLIC_ALPHA_VANTAGE_NEWS_API_KEY;
 
 export interface StockInfo {
   symbol: string;
@@ -21,11 +22,14 @@ export interface NewsItem {
 }
 
 export async function searchStock(query: string): Promise<StockInfo[]> {
-  if (!query || !API_KEY) return [];
+  if (!query || !SEARCH_API_KEY) {
+    console.log('Missing query or Search API key');
+    return [];
+  }
 
   try {
     const response = await fetch(
-      `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${API_KEY}`
+      `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${SEARCH_API_KEY}`
     );
 
     if (!response.ok) {
@@ -54,9 +58,14 @@ export async function searchStock(query: string): Promise<StockInfo[]> {
 }
 
 export async function getStockNews(symbol: string): Promise<NewsItem[]> {
+  if (!symbol || !NEWS_API_KEY) {
+    console.log('Missing symbol or News API key');
+    return [];
+  }
+
   try {
     const response = await fetch(
-      `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=${symbol}&apikey=${API_KEY}`
+      `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=${symbol}&apikey=${NEWS_API_KEY}`
     );
     const data = await response.json();
     return data.feed || [];
