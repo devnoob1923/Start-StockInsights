@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Plus, X, RefreshCw, Trash2 } from "lucide-react"
+import { Plus, X, RefreshCw, Trash2, Link2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Card } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -28,6 +28,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { searchStock, getStockNews, type StockInfo, type NewsItem } from '@/lib/alpha-vantage'
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { ThemeToggle } from "@/components/ui/theme-toggle"
 
 interface PortfolioStock {
   symbol: string;
@@ -196,51 +203,85 @@ export default function PortfolioPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-end mb-4">
+        <ThemeToggle />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left Column - Portfolio */}
         <div>
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-2xl font-bold">My Portfolio</h1>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Stock
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add Stock to Portfolio</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">Search Stock</label>
-                    <Input
-                      placeholder="Search by symbol or name"
-                      value={searchQuery}
-                      onChange={(e) => handleSearch(e.target.value)}
-                      className="mt-2"
-                    />
-                    {searchResults.length > 0 && (
-                      <div className="mt-2 border rounded-md max-h-60 overflow-y-auto">
-                        {searchResults.map((stock) => (
-                          <div
-                            key={stock.symbol}
-                            className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-0"
-                            onClick={() => addStock(stock)}
-                          >
-                            <div className="font-medium">{stock.name}</div>
-                            <div className="text-sm text-gray-500">
-                              {stock.symbol} • {stock.region} • {stock.currency}
+            <div className="flex gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Link2 className="w-4 h-4 mr-2" />
+                    Connect Broker
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent 
+                  align="end" 
+                  className="w-[200px] bg-white border rounded-md shadow-md"
+                >
+                  <DropdownMenuItem className="cursor-pointer hover:bg-gray-100">
+                    Robinhood
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer hover:bg-gray-100">
+                    E*TRADE
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer hover:bg-gray-100">
+                    TD Ameritrade
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer hover:bg-gray-100">
+                    Charles Schwab
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer hover:bg-gray-100">
+                    Fidelity
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Stock
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add Stock to Portfolio</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium">Search Stock</label>
+                      <Input
+                        placeholder="Search by symbol or name"
+                        value={searchQuery}
+                        onChange={(e) => handleSearch(e.target.value)}
+                        className="mt-2"
+                      />
+                      {searchResults.length > 0 && (
+                        <div className="mt-2 border rounded-md max-h-60 overflow-y-auto">
+                          {searchResults.map((stock) => (
+                            <div
+                              key={stock.symbol}
+                              className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-0"
+                              onClick={() => addStock(stock)}
+                            >
+                              <div className="font-medium">{stock.name}</div>
+                              <div className="text-sm text-gray-500">
+                                {stock.symbol} • {stock.region} • {stock.currency}
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
 
           {/* Portfolio Summary Cards */}
@@ -358,7 +399,7 @@ export default function PortfolioPage() {
               <h2 className="text-xl font-semibold">Latest News</h2>
               <div className="flex gap-2">
                 <select
-                  className="border rounded-md px-2 py-1"
+                  className="border rounded-md px-2 py-1 bg-white hover:bg-gray-50 cursor-pointer"
                   value={selectedStockFilter}
                   onChange={(e) => filterNews(e.target.value)}
                 >
